@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Todo</title>
+</head>
+<body>
+
+<h2>Simple Todo App (No DB)</h2>
+
+<form method="POST">
+    <input type="text" name="task" placeholder="Enter task">
+    <button type="submit">Add</button>
+</form>
+
+<hr>
+
+<ul>
+    {% for t in todos %}
+        <li>{{ t }}</li>
+    {% empty %}
+        <li>No tasks yet</li>
+    {% endfor %}
+</ul>
+
+</body>
+</html>
