@@ -37,8 +37,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    
-    'todolist', 
+    'todo', 
 ]
 
 MIDDLEWARE = [
@@ -76,11 +75,14 @@ WSGI_APPLICATION = 'todolist.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'django_1',
+        'USER': 'postgres',
+        'PASSWORD': '@Pranshu',
+        'HOST': 'localhost',
+        'PORT': '1300',
     }
 }
-
 
 
 # Password validation
