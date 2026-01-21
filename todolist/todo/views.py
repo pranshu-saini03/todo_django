@@ -59,11 +59,18 @@ def update_todo(request):
             status=405
         )
 
-    todo_id = request.GET.get("int")
-
-    if not todo_id:
+    todo_id_str = request.GET.get("id")
+    if not todo_id_str:
         return JsonResponse(
-            {"success": False, "message": "Todo id is required"},
+            {"success": False, "message": "Todo id is required as query parameter 'id'"},
+            status=400
+        )
+
+    try:
+        todo_id = int(todo_id_str)
+    except ValueError:
+        return JsonResponse(
+            {"success": False, "message": "Invalid todo id"},
             status=400
         )
 
@@ -75,11 +82,14 @@ def update_todo(request):
             status=404
         )
 
-    # ✅ safe JSON parsing
+    # Safe JSON parsing
     try:
         data = json.loads(request.body.decode("utf-8"))
     except Exception:
-        data = {}
+        return JsonResponse(
+            {"success": False, "message": "Invalid JSON body"},
+            status=400
+        )
 
     todo_item.title = data.get("title", todo_item.title)
     todo_item.description = data.get("description", todo_item.description)
@@ -104,11 +114,18 @@ def delete_todo(request):
             status=405
         )
 
-    todo_id = request.GET.get("int")
-
-    if not todo_id:
+    todo_id_str = request.GET.get("id")
+    if not todo_id_str:
         return JsonResponse(
-            {"success": False, "message": "Todo id is required"},
+            {"success": False, "message": "Todo id is required as query parameter 'id'"},
+            status=400
+        )
+
+    try:
+        todo_id = int(todo_id_str)
+    except ValueError:
+        return JsonResponse(
+            {"success": False, "message": "Invalid todo id"},
             status=400
         )
 
