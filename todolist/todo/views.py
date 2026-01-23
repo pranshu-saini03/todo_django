@@ -1,148 +1,62 @@
-from django.shortcuts import render
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 import json
-from .models import todo
-
-
-@csrf_exempt
-def todo_list(request):
-    todo_list = todo.objects.all()
-    return JsonResponse(
-        {
-            "success": True,
-            "data": list(todo_list.values())
-        },
-        status=200
-    )
-
+from .models import Todo
+from .permissions import has_permission
+from accounts.models import User
 
 @csrf_exempt
 def add_todo(request):
-    if request.method != "POST":
-        return JsonResponse(
-            {"success": False, "message": "Only POST allowed"},
-            status=405
-        )
+    if not has_permission(request.user_id, "can_create"):
+        return JsonResponse({"error": "Permission denied"}, status=403)
 
-    try:
-        data = json.loads(request.body.decode("utf-8"))
-    except Exception:
-        return JsonResponse(
-            {"success": False, "message": "Invalid JSON body"},
-            status=400
-        )
+    data = json.loads(request.body)
+    user = User.objects.get(id=request.user_id)
 
-    title = data.get("title")
-    description = data.get("description")
-
-    todo_item = todo.objects.create(
-        title=title,
-        description=description
+    Todo.objects.create(
+        user=user,
+        title=data.get("title"),
+        description=data.get("description")
     )
 
-    return JsonResponse(
-        {
-            "success": True,
-            "message": "Todo created",
-            "todo_id": todo_item.id
-        },
-        status=201
-    )
+    request.session["last_action"] = "created todo"
+
+    return JsonResponse({"message": "Todo created"})
+
+
+@csrf_exempt
+def list_todo(request):
+    todos = Todo.objects.filter(user_id=request.user_id)
+    return JsonResponse({"data": list(todos.values())})
 
 
 @csrf_exempt
 def update_todo(request):
-    if request.method != "PUT":
-        return JsonResponse(
-            {"success": False, "message": "Only PUT allowed"},
-            status=405
-        )
+    if not has_permission(request.user_id, "can_update"):
+        return JsonResponse({"error": "Permission denied"}, status=403)
 
-    todo_id_str = request.GET.get("id")
-    if not todo_id_str:
-        return JsonResponse(
-            {"success": False, "message": "Todo id is required as query parameter 'id'"},
-            status=400
-        )
+    data = json.loads(request.body)
+    todo = Todo.objects.get(id=data.get("id"), user_id=request.user_id)
 
-    try:
-        todo_id = int(todo_id_str)
-    except ValueError:
-        return JsonResponse(
-            {"success": False, "message": "Invalid todo id"},
-            status=400
-        )
+    todo.title = data.get("title", todo.title)
+    todo.description = data.get("description", todo.description)
+    todo.completed = data.get("completed", todo.completed)
+    todo.save()
 
-    try:
-        todo_item = todo.objects.get(id=todo_id)
-    except todo.DoesNotExist:
-        return JsonResponse(
-            {"success": False, "message": "Todo not found"},
-            status=404
-        )
-
-    # Safe JSON parsing
-    try:
-        data = json.loads(request.body.decode("utf-8"))
-    except Exception:
-        return JsonResponse(
-            {"success": False, "message": "Invalid JSON body"},
-            status=400
-        )
-
-    todo_item.title = data.get("title", todo_item.title)
-    todo_item.description = data.get("description", todo_item.description)
-    todo_item.completed = data.get("completed", todo_item.completed)
-
-    todo_item.save()
-
-    return JsonResponse(
-        {
-            "success": True,
-            "message": "Todo updated"
-        },
-        status=200
-    )
+    return JsonResponse({"message": "Updated"})
 
 
 @csrf_exempt
 def delete_todo(request):
-    if request.method != "DELETE":
-        return JsonResponse(
-            {"success": False, "message": "Only DELETE allowed"},
-            status=405
-        )
+    if not request.user_id:
+        return JsonResponse({"error": "Unauthorized"}, status=401)
 
-    todo_id_str = request.GET.get("id")
-    if not todo_id_str:
-        return JsonResponse(
-            {"success": False, "message": "Todo id is required as query parameter 'id'"},
-            status=400
-        )
+    if not has_permission(request.user_id, "can_delete"):
+        return JsonResponse({"error": "Permission denied"}, status=403)
 
-    try:
-        todo_id = int(todo_id_str)
-    except ValueError:
-        return JsonResponse(
-            {"success": False, "message": "Invalid todo id"},
-            status=400
-        )
+    data = json.loads(request.body)
+    todo_id = data.get("id")
 
-    try:
-        todo_item = todo.objects.get(id=todo_id)
-    except todo.DoesNotExist:
-        return JsonResponse(
-            {"success": False, "message": "Todo not found"},
-            status=404
-        )
+    Todo.objects.get(id=todo_id, user_id=request.user_id).delete()
 
-    todo_item.delete()
-
-    return JsonResponse(
-        {
-            "success": True,
-            "message": "Todo deleted"
-        },
-        status=200
-    )
+    return JsonResponse({"message": "Deleted"})
