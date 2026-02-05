@@ -1,62 +1,87 @@
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-import json
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+
+from .serializers import (TodoCreateSerializer,
+                        TodoListSerializer,
+                        TodoDeleteSerializer,
+                        TodoUpdateSerializer)
+
 from .models import Todo
-from .permissions import has_permission
+from .decorators import class_permission
 from accounts.models import User
+from .permissions import (is_jwt_authenticated,
+                          can_create,
+                          can_delete,
+                          can_read,
+                          can_update)
 
-@csrf_exempt
-def add_todo(request):
-    if not has_permission(request.user_id, "can_create"):
-        return JsonResponse({"error": "Permission denied"}, status=403)
+@class_permission(is_jwt_authenticated,can_create)
+class AddTodoView(APIView):
 
-    data = json.loads(request.body)
-    user = User.objects.get(id=request.user_id)
+    def post(self, request):
+        
+        serializer = TodoCreateSerializer(data=request.data)
 
-    Todo.objects.create(
-        user=user,
-        title=data.get("title"),
-        description=data.get("description")
-    )
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    request.session["last_action"] = "created todo"
+        user = User.objects.get(id=request.user_id)
 
-    return JsonResponse({"message": "Todo created"})
+        serializer.save(user=user)
 
+        request.session["last_action"] = "created todo"
 
-@csrf_exempt
-def list_todo(request):
-    todos = Todo.objects.filter(user_id=request.user_id)
-    return JsonResponse({"data": list(todos.values())})
-
-
-@csrf_exempt
-def update_todo(request):
-    if not has_permission(request.user_id, "can_update"):
-        return JsonResponse({"error": "Permission denied"}, status=403)
-
-    data = json.loads(request.body)
-    todo = Todo.objects.get(id=data.get("id"), user_id=request.user_id)
-
-    todo.title = data.get("title", todo.title)
-    todo.description = data.get("description", todo.description)
-    todo.completed = data.get("completed", todo.completed)
-    todo.save()
-
-    return JsonResponse({"message": "Updated"})
+        return Response({"message": "Todo created"},status=status.HTTP_200_OK)
 
 
-@csrf_exempt
-def delete_todo(request):
-    if not request.user_id:
-        return JsonResponse({"error": "Unauthorized"}, status=401)
+@class_permission(is_jwt_authenticated, can_read)
+class ListTodoView(APIView):
 
-    if not has_permission(request.user_id, "can_delete"):
-        return JsonResponse({"error": "Permission denied"}, status=403)
+    def get(self, request):
+        todos = Todo.objects.filter(user_id=request.user_id)
+        serializer = TodoListSerializer(todos, many=True)
 
-    data = json.loads(request.body)
-    todo_id = data.get("id")
+        return Response(serializer.data, status=200)
 
-    Todo.objects.get(id=todo_id, user_id=request.user_id).delete()
+@class_permission(is_jwt_authenticated, can_update)
+class UpdateTodoView(APIView):
 
-    return JsonResponse({"message": "Deleted"})
+    def put(self,request):
+        data = request.data
+        if not data:
+            return Response({"id": "This field is required."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            todo = Todo.objects.get(id=data.get("id"), user_id=request.user_id)
+        except Todo.DoesNotExist:
+            return Response({"error": "Todo not found"}, status=404)
+        
+        serializer = TodoUpdateSerializer(todo, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer.save()
+
+        return Response({"message": "Updated"},status=status.HTTP_200_OK)
+
+@class_permission(is_jwt_authenticated, can_delete)
+class DeleteTodoView(APIView):
+
+    def delete(self, request):
+        if not request.user_id:
+            return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        serializer = TodoDeleteSerializer(data=request.data)
+
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+
+        todo_id = serializer.validated_data["id"]
+
+        try:
+            Todo.objects.get(id=todo_id, user_id=request.user_id).delete()
+        except Todo.DoesNotExist:
+            return Response({"error": "Todo not found"}, status=404)
+
+        return Response({"message": "Deleted"}, status=200)
+

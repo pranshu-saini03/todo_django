@@ -1,38 +1,68 @@
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-import json
-from .models import User
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+
+from .models import User, Role
 from .jwt_utils import generate_jwt
-@csrf_exempt
-def login(request):
-    if request.method != "POST":
-        return JsonResponse({"error": "POST required"}, status=405)
+from .serializers import LoginSerializer, UserSerializer
 
-    try:
-        data = json.loads(request.body.decode("utf-8"))
-    except:
-        return JsonResponse({"error": "Invalid JSON"}, status=400)
 
-    username = data.get("username")
-    password = data.get("password")
+class registrationview(APIView):
+    def post(self, request):
+        data = request.data.copy()
+        role_name = data.get('role')
+        if not role_name:
+            return Response(
+                {"role": "This field is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            default_role = Role.objects.get(name=role_name)
+        except Role.DoesNotExist:
+            return Response(
+                {"role": "Invalid role."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-    if not username or not password:
-        return JsonResponse({"error": "username and password required"}, status=400)
+        data['role'] = default_role.id
+        serializer = UserSerializer(data=data)
 
-    user = User.objects.filter(username=username, password=password).first()
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    if not user:
-        return JsonResponse({"error": "Invalid credentials"}, status=401)
+        user = serializer.save()
 
-    token = generate_jwt(user.id)
+        return Response({
+            "id": user.id,
+            "username": user.username,
+            "role": user.role.name
+        }, status=status.HTTP_201_CREATED)
 
-    request.session["last_login"] = user.username
+class loginview(APIView):
+    def post(self, request):
+        serializer = LoginSerializer(data=request.data)
 
-    return JsonResponse({
-        "token": token,
-        "role": user.role.name
-    })
-@csrf_exempt
-def logout(request):
-    request.session.flush()
-    return JsonResponse({"message": "Logged out successfully"})
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        username=serializer.validated_data['username']
+        password=serializer.validated_data['password']
+        user=User.objects.filter(username=username,password=password).first()
+
+        if not user:
+            return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        token = generate_jwt(user.id)
+        request.session["last_login"] = user.username
+
+        return Response({
+            "token": token,
+            "role": user.role.name
+        }, status=status.HTTP_200_OK
+        )
+ 
+class logoutview(APIView):
+    def post(self, request):
+        request.session.flush()
+        return Response({"message": "Logged out successfully"},
+                        status=status.HTTP_200_OK)
